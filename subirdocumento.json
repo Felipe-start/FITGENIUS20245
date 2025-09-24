@@ -1,0 +1,262 @@
+{
+  "name": "Procesar Archivos Gym",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/upload-file",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "gym-upload-file"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar que venga el archivo\nconst file = $input.first().binary.file;\n\nif (!file) {\n    return [{ error: \"No se proporcionó archivo válido\" }];\n}\n\n// Validar tipo de archivo\nconst allowedTypes = ['pdf', 'docx', 'txt', 'doc'];\nconst fileName = file.fileName || '';\nconst fileExtension = fileName.split('.').pop().toLowerCase();\n\nif (!allowedTypes.includes(fileExtension)) {\n    return [{ error: \"Tipo de archivo no permitido. Use PDF, DOCX o TXT\" }];\n}\n\n// Validar tamaño (max 10MB)\nif (file.data.length > 10 * 1024 * 1024) {\n    return [{ error: \"Archivo demasiado grande. Máximo 10MB\" }];\n}\n\nreturn [{\n    json: {\n        fileName: fileName,\n        fileExtension: fileExtension,\n        fileSize: file.data.length,\n        fileBuffer: file.data\n    },\n    binary: {\n        file: file\n    }\n}];"
+      },
+      "id": "2",
+      "name": "Validar Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "https://{{ $env.SUPABASE_PROJECT }}.supabase.co/storage/v1/object/gym-documents/{{ $json.fileName }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/octet-stream"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "binaryData",
+        "binaryProperty": "file"
+      },
+      "id": "3",
+      "name": "Subir a Supabase Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { fileName, fileExtension, fileBuffer } = $input.first().json;\nlet extractedText = '';\n\nasync function processFile() {\n    try {\n        if (fileExtension === 'pdf') {\n            // Para PDF necesitarías un servicio externo o función\n            extractedText = \"Texto extraído de PDF: [Contenido procesado]\";\n            \n        } else if (fileExtension === 'docx') {\n            // Para DOCX necesitarías un servicio externo\n            extractedText = \"Texto extraído de DOCX: [Contenido procesado]\";\n            \n        } else if (fileExtension === 'txt') {\n            // TXT es simple\n            extractedText = fileBuffer.toString('utf8');\n        }\n        \n        return {\n            extractedText,\n            fileName,\n            fileExtension,\n            success: true\n        };\n        \n    } catch (error) {\n        return {\n            error: `Error procesando archivo: ${error.message}`,\n            success: false\n        };\n    }\n}\n\nconst result = await processFile();\nreturn [{ json: result }];"
+      },
+      "id": "4",
+      "name": "Procesar Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nif (!input.success) {\n    return [{ json: { error: input.error } }];\n}\n\nconst { extractedText, fileName, fileExtension } = input;\n\n// Dividir texto en chunks\nconst chunkSize = 1000;\nconst chunks = [];\n\nfor (let i = 0; i < extractedText.length; i += chunkSize) {\n    const chunk = extractedText.slice(i, i + chunkSize);\n    const lines = chunk.split('\\n');\n    let sectionTitle = 'Sin título';\n    \n    // Buscar título\n    for (const line of lines.slice(0, 5)) {\n        if (line.trim().length > 10 && line.trim().length < 100) {\n            sectionTitle = line.trim().substring(0, 100);\n            break;\n        }\n    }\n    \n    chunks.push({\n        chunkNumber: chunks.length + 1,\n        content: chunk,\n        sectionTitle: sectionTitle,\n        wordCount: chunk.split(/\\s+/).length\n    });\n}\n\nreturn [{\n    json: {\n        fileName,\n        fileExtension,\n        chunks,\n        totalChunks: chunks.length,\n        totalTextLength: extractedText.length,\n        storagePath: `gym-documents/${fileName}`\n    }\n}];"
+      },
+      "id": "5",
+      "name": "Dividir en Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "https://{{ $env.SUPABASE_PROJECT }}.supabase.co/rest/v1/gym_files",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "{{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "{\n  \"filename\": \"{{ $json.fileName }}\",\n  \"file_type\": \"{{ $json.fileExtension }}\",\n  \"file_size\": \"{{ $json.totalTextLength }}\",\n  \"original_url\": \"{{ $json.storagePath }}\",\n  \"status\": \"processed\"\n}"
+      },
+      "id": "6",
+      "name": "Guardar Metadatos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1280, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fileId = $input.first().json[0].id;\nconst chunks = $json.chunks;\n\nconst chunksWithFileId = chunks.map(chunk => ({\n    file_id: fileId,\n    chunk_number: chunk.chunkNumber,\n    content: chunk.content.substring(0, 10000), // Limitar tamaño\n    section_title: chunk.sectionTitle,\n    word_count: chunk.wordCount\n}));\n\nreturn chunksWithFileId.map(chunk => ({ json: chunk }));"
+      },
+      "id": "7",
+      "name": "Preparar Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1480, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "https://{{ $env.SUPABASE_PROJECT }}.supabase.co/rest/v1/file_content_chunks",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "{{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "8",
+      "name": "Guardar Chunks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1680, 300],
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const fileData = $input.first().json;\n\nreturn [{\n    json: {\n        success: true,\n        message: \"Archivo procesado exitosamente\",\n        fileId: fileData.id,\n        fileName: fileData.filename,\n        totalChunks: fileData.totalChunks,\n        processedAt: new Date().toISOString()\n    }\n}];"
+      },
+      "id": "9",
+      "name": "Respuesta Exitosa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1880, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validar Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Archivo": {
+      "main": [
+        [
+          {
+            "node": "Subir a Supabase Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subir a Supabase Storage": {
+      "main": [
+        [
+          {
+            "node": "Procesar Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar Archivo": {
+      "main": [
+        [
+          {
+            "node": "Dividir en Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dividir en Chunks": {
+      "main": [
+        [
+          {
+            "node": "Guardar Metadatos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Metadatos": {
+      "main": [
+        [
+          {
+            "node": "Preparar Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Chunks": {
+      "main": [
+        [
+          {
+            "node": "Guardar Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Chunks": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Exitosa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

@@ -1,0 +1,84 @@
+{
+  "name": "FitGenius - User Login",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "fitgenius-login",
+        "responseMode": "onReceived"
+      },
+      "id": "login-webhook",
+      "name": "Login Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "fitgenius-login-webhook",
+      "position": [300, 500]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "login_attempts",
+        "columns": {
+          "user_id": "={{ $json.user_id }}",
+          "email": "={{ $json.email }}",
+          "success": "={{ $json.success }}",
+          "ip_address": "={{ $json.ip_address }}",
+          "user_agent": "={{ $json.user_agent }}"
+        }
+      },
+      "id": "supabase-login-attempt",
+      "name": "Record Login Attempt",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [600, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "successResponse": "json",
+          "responseData": "firstEntryJson"
+        }
+      },
+      "id": "login-success-response",
+      "name": "Login Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 500]
+    }
+  ],
+  "connections": {
+    "Login Webhook": {
+      "main": [
+        [
+          {
+            "node": "Record Login Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Login Attempt": {
+      "main": [
+        [
+          {
+            "node": "Login Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "fitgenius-login",
+  "triggerCount": 1,
+  "updatedAt": "2023-12-07T10:00:00.000Z",
+  "versionId": "1"
+}

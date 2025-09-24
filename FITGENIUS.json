@@ -1,0 +1,85 @@
+{
+  "name": "FitGenius - Simple Registration",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "fitgenius-register",
+        "responseMode": "onReceived"
+      },
+      "id": "register-webhook",
+      "name": "Register Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "fitgenius-register-webhook",
+      "position": [300, 500]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "profiles",
+        "columns": {
+          "email": "={{ $json.body.email }}",
+          "first_name": "={{ $json.body.first_name }}",
+          "last_name": "={{ $json.body.last_name }}",
+          "date_of_birth": "={{ $json.body.date_of_birth }}",
+          "gender": "={{ $json.body.gender }}",
+          "height": "={{ $json.body.height }}",
+          "weight": "={{ $json.body.weight }}",
+          "fitness_level": "={{ $json.body.fitness_level }}",
+          "goals": "={{ $json.body.goals }}"
+        }
+      },
+      "id": "create-profile",
+      "name": "Create Profile",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [600, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "successResponse": "json",
+          "responseData": "firstEntryJson"
+        }
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 500]
+    }
+  ],
+  "connections": {
+    "Register Webhook": {
+      "main": [
+        [
+          {
+            "node": "Create Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Profile": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "fitgenius-simple-registration"
+}
