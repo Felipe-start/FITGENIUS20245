@@ -1,16 +1,14 @@
+// auth.js - Versión actualizada solo con Supabase
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Supabase
-    const supabaseUrl = 'https://sltkozliukagipqytlew.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNsdGtvemxpdWthZ2lwcXl0bGV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcyNzY3MDIsImV4cCI6MjA3Mjg1MjcwMn0.GDM0c6reH7lmjr3UNyJ7-_0FPilcF-ICrdHOYm6hH1g';
-    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+    // Configuración de Supabase
+    const SUPABASE_URL = 'https://mbrlhpqbjypdrgsjqycs.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1icmxocHFianlwZHJnc2pxeWNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NDU1MDYsImV4cCI6MjA4OTEyMTUwNn0.C5plEF0kwXqkGBqq_iSO0XLFdMPkrI9DEXbXCAQ8YCA';
     
-    // N8N endpoints
-    const n8nLoginUrl = 'https://felipe021104.app.n8n.cloud/webhook/fitgenius-login';
-    const n8nRegisterUrl = 'https://felipe021104.app.n8n.cloud/webhook/fitgenius-register';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Hide loader after page load
     setTimeout(() => {
-        document.querySelector('.loader').classList.add('hidden');
+        document.querySelector('.loader')?.classList.add('hidden');
     }, 1000);
     
     // Toggle password visibility
@@ -53,136 +51,39 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
             
             try {
-                // Send to n8n
-                const n8nResponse = await fetch(n8nLoginUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email, password })
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
                 });
                 
-                if (!n8nResponse.ok) {
-                    throw new Error('Error en la comunicación con el servidor');
-                }
+                if (error) throw error;
                 
-                const n8nData = await n8nResponse.json();
+                showMessage('¡Inicio de sesión exitoso!', 'success');
                 
-                if (n8nData.success) {
-                    // Login with Supabase
-                    const { data, error } = await supabase.auth.signInWithPassword({
-                        email,
-                        password
-                    });
-                    
-                    if (error) {
-                        throw error;
-                    }
-                    
-                    // Redirect to home
+                setTimeout(() => {
                     window.location.href = 'home.html';
-                } else {
-                    throw new Error(n8nData.message || 'Credenciales incorrectas');
-                }
+                }, 1000);
             } catch (error) {
-                showMessage(error.message, 'error');
+                showMessage(error.message || 'Error al iniciar sesión', 'error');
             } finally {
-                // Reset button state
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
             }
         });
     }
     
-    // Handle register form submission
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.addEventListener('submit', async (e) => {
+    // Handle logout
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             
-            const fullname = document.getElementById('fullname').value;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            
-            // Validate passwords match
-            if (password !== confirmPassword) {
-                showMessage('Las contraseñas no coinciden', 'error');
-                return;
+            const { error } = await supabase.auth.signOut();
+            if (!error) {
+                window.location.href = 'login.html';
+            } else {
+                showMessage('Error al cerrar sesión', 'error');
             }
-            
-            // Show loading state
-            const submitBtn = registerForm.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando cuenta...';
-            submitBtn.disabled = true;
-            
-            try {
-                // Send to n8n
-                const n8nResponse = await fetch(n8nRegisterUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ fullname, email, password })
-                });
-                
-                if (!n8nResponse.ok) {
-                    throw new Error('Error en la comunicación con el servidor');
-                }
-                
-                const n8nData = await n8nResponse.json();
-                
-                if (n8nData.success) {
-                    // Register with Supabase
-                    const { data, error } = await supabase.auth.signUp({
-                        email,
-                        password,
-                        options: {
-                            data: {
-                                full_name: fullname
-                            }
-                        }
-                    });
-                    
-                    if (error) {
-                        throw error;
-                    }
-                    
-                    showMessage('Cuenta creada exitosamente. Redirigiendo...', 'success');
-                    
-                    // Redirect to login after a short delay
-                    setTimeout(() => {
-                        window.location.href = 'login.html';
-                    }, 2000);
-                } else {
-                    throw new Error(n8nData.message || 'Error al crear la cuenta');
-                }
-            } catch (error) {
-                showMessage(error.message, 'error');
-            } finally {
-                // Reset button state
-                submitBtn.textContent = originalText;
-                submitBtn.disabled = false;
-            }
-        });
-    }
-    
-    // Forgot password functionality
-    const forgotPasswordLink = document.getElementById('forgotPassword');
-    if (forgotPasswordLink) {
-        forgotPasswordLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            
-            const email = document.getElementById('email')?.value || '';
-            
-            if (!email) {
-                showMessage('Por favor ingresa tu correo electrónico primero', 'error');
-                return;
-            }
-            
-            // Implement forgot password logic here
-            showMessage('Se ha enviado un enlace de recuperación a tu correo', 'success');
         });
     }
     
@@ -197,16 +98,23 @@ document.addEventListener('DOMContentLoaded', function() {
         messageEl.className = `message ${type}`;
         messageEl.textContent = message;
         
-        // Insert after the form header or at the top of the form
+        // Style the message
+        messageEl.style.cssText = `
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+            ${type === 'error' ? 'background: #fee; color: #c33;' : 'background: #e8f5e9; color: #2e7d32;'}
+        `;
+        
+        // Insert after the form header
         const authHeader = document.querySelector('.auth-header');
         if (authHeader) {
             authHeader.parentNode.insertBefore(messageEl, authHeader.nextSibling);
         } else {
             document.querySelector('.auth-form').prepend(messageEl);
         }
-        
-        // Show message
-        messageEl.style.display = 'block';
         
         // Auto hide after 5 seconds
         setTimeout(() => {
@@ -223,14 +131,36 @@ document.addEventListener('DOMContentLoaded', function() {
     const facebookBtn = document.querySelector('.btn-facebook');
     
     if (googleBtn) {
-        googleBtn.addEventListener('click', () => {
-            showMessage('Inicio de sesión con Google en desarrollo', 'info');
+        googleBtn.addEventListener('click', async () => {
+            try {
+                const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: window.location.origin + '/home.html'
+                    }
+                });
+                
+                if (error) throw error;
+            } catch (error) {
+                showMessage(error.message || 'Error con Google', 'error');
+            }
         });
     }
     
     if (facebookBtn) {
-        facebookBtn.addEventListener('click', () => {
-            showMessage('Inicio de sesión con Facebook en desarrollo', 'info');
+        facebookBtn.addEventListener('click', async () => {
+            try {
+                const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'facebook',
+                    options: {
+                        redirectTo: window.location.origin + '/home.html'
+                    }
+                });
+                
+                if (error) throw error;
+            } catch (error) {
+                showMessage(error.message || 'Error con Facebook', 'error');
+            }
         });
     }
 });

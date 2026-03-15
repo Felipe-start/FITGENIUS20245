@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Supabase
     const supabaseUrl = 'https://sltkozliukagipqytlew.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNsdGtvemxpdWthZ2lwcXl0bGV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcyNzY3MDIsImV4cCI6MjA3Mjg1MjcwMn0.GDM0c6reH7lmjr3UNyJ7-_0FPilcF-ICrdHOYm6hH1g';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1icmxocHFianlwZHJnc2pxeWNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NDU1MDYsImV4cCI6MjA4OTEyMTUwNn0.C5plEF0kwXqkGBqq_iSO0XLFdMPkrI9DEXbXCAQ8YCA';
     const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
     
     // Hide loader after page load

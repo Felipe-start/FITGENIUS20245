@@ -904,6 +904,9 @@
         </div>
     </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="supabase-config.js"></script>
 <script>
     // DOM Elements
     const exercisesGrid = document.getElementById('exercisesGrid');
@@ -913,42 +916,75 @@
     const categoryFilter = document.getElementById('categoryFilter');
     const muscleGroupFilter = document.getElementById('muscleGroupFilter');
     const difficultyFilter = document.getElementById('difficultyFilter');
+    const equipmentFilter = document.getElementById('equipmentFilter');
+    const bodyPartFilter = document.getElementById('bodyPartFilter');
     
     // Initialize jsPDF
     const { jsPDF } = window.jspdf;
     
-    // API Configuration
-    const API_KEY = '8e13869146msh04e6fa201e07a2bp1f8156jsn5fcf0546b814';
-    const API_HOST = 'exercisedb.p.rapidapi.com';
-    const API_BASE_URL = 'https://exercisedb.p.rapidapi.com';
-    
     // Current state
     let currentExercises = [];
     let currentExercise = null;
-    let routine = JSON.parse(localStorage.getItem('fitgenius_routine')) || [];
+    let routine = []; // Esto ahora vendrá de Supabase
     let allExercises = [];
     let equipmentList = [];
     let bodyPartList = [];
+    let currentRoutineId = null;
 
     // Initialize the page
     async function init() {
-        await fetchEquipmentList();
-        await fetchBodyPartList();
-        await fetchExercises();
-        renderRoutine();
-        setupEventListeners();
+        try {
+            // Verificar autenticación
+            const { data: { user } } = await fitgenius.supabase.auth.getUser();
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            await loadUserRoutine();
+            await fetchEquipmentList();
+            await fetchBodyPartList();
+            await fetchExercises();
+            renderRoutine();
+            setupEventListeners();
+        } catch (error) {
+            console.error('Error en inicialización:', error);
+            showNotification('Error al cargar la página', 'error');
+        }
+    }
+
+    // Cargar rutina del usuario desde Supabase
+    async function loadUserRoutine() {
+        try {
+            const userRoutines = await fitgenius.routines.getUserRoutines();
+            
+            if (userRoutines && userRoutines.length > 0) {
+                // Usar la rutina más reciente
+                const latestRoutine = userRoutines[0];
+                currentRoutineId = latestRoutine.id;
+                
+                // Cargar ejercicios de la rutina
+                const routineWithExercises = await fitgenius.routines.getRoutineWithExercises(latestRoutine.id);
+                routine = routineWithExercises.routine_exercises.map(ex => ex.exercise_id);
+            } else {
+                // Crear una nueva rutina por defecto
+                const newRoutine = await fitgenius.routines.create({
+                    name: 'Mi Rutina',
+                    description: 'Rutina personalizada'
+                });
+                currentRoutineId = newRoutine.id;
+                routine = [];
+            }
+        } catch (error) {
+            console.error('Error cargando rutina:', error);
+            showNotification('Error al cargar tu rutina', 'error');
+        }
     }
 
     // Fetch equipment list from API
     async function fetchEquipmentList() {
         try {
-            const response = await axios.get(`${API_BASE_URL}/exercises/equipmentList`, {
-                headers: {
-                    'X-RapidAPI-Key': API_KEY,
-                    'X-RapidAPI-Host': API_HOST
-                }
-            });
-            equipmentList = response.data;
+            equipmentList = await fitgenius.exercises.getEquipment();
             populateEquipmentFilter();
         } catch (error) {
             console.error('Error fetching equipment list:', error);
@@ -959,13 +995,7 @@
     // Fetch body part list from API
     async function fetchBodyPartList() {
         try {
-            const response = await axios.get(`${API_BASE_URL}/exercises/bodyPartList`, {
-                headers: {
-                    'X-RapidAPI-Key': API_KEY,
-                    'X-RapidAPI-Host': API_HOST
-                }
-            });
-            bodyPartList = response.data;
+            bodyPartList = await fitgenius.exercises.getBodyParts();
             populateBodyPartFilter();
         } catch (error) {
             console.error('Error fetching body part list:', error);
@@ -975,7 +1005,6 @@
 
     // Populate equipment filter dropdown
     function populateEquipmentFilter() {
-        const equipmentFilter = document.getElementById('equipmentFilter');
         if (!equipmentFilter) return;
         
         equipmentFilter.innerHTML = '<option value="">Todo el equipo</option>';
@@ -989,7 +1018,6 @@
 
     // Populate body part filter dropdown
     function populateBodyPartFilter() {
-        const bodyPartFilter = document.getElementById('bodyPartFilter');
         if (!bodyPartFilter) return;
         
         bodyPartFilter.innerHTML = '<option value="">Todas las partes del cuerpo</option>';
@@ -1007,15 +1035,7 @@
             // Mostrar loader
             exercisesGrid.innerHTML = '<div class="loader"><div class="loader-spinner"></div></div>';
             
-            // Hacer petición a la API
-            const response = await axios.get(`${API_BASE_URL}/exercises`, {
-                headers: {
-                    'X-RapidAPI-Key': API_KEY,
-                    'X-RapidAPI-Host': API_HOST
-                }
-            });
-            
-            allExercises = response.data;
+            allExercises = await fitgenius.exercises.fetchAll();
             currentExercises = allExercises;
             
             // Renderizar ejercicios
@@ -1080,6 +1100,7 @@
         }
         
         exercisesToRender.forEach(exercise => {
+            const isInRoutine = routine.includes(exercise.id);
             const exerciseCard = document.createElement('div');
             exerciseCard.className = 'exercise-card';
             exerciseCard.innerHTML = `
@@ -1103,8 +1124,8 @@
                         <button class="btn-icon view-exercise" data-id="${exercise.id}">
                             <i class="fas fa-eye"></i>
                         </button>
-                        <button class="btn-icon add-to-routine" data-id="${exercise.id}">
-                            <i class="fas fa-plus"></i>
+                        <button class="btn-icon add-to-routine" data-id="${exercise.id}" ${isInRoutine ? 'disabled' : ''}>
+                            <i class="fas ${isInRoutine ? 'fa-check' : 'fa-plus'}"></i>
                         </button>
                     </div>
                 </div>
@@ -1123,7 +1144,6 @@
 
     // Get intensity level based on exercise properties
     function getIntensityLevel(exercise) {
-        // Simple logic to determine intensity - you can customize this
         if (exercise.equipment === 'body weight' || exercise.equipment === 'band') {
             return 2;
         } else if (exercise.equipment === 'dumbbell' || exercise.equipment === 'kettlebell') {
@@ -1215,6 +1235,8 @@
         categoryFilter.addEventListener('change', filterExercises);
         muscleGroupFilter.addEventListener('change', filterExercises);
         difficultyFilter.addEventListener('change', filterExercises);
+        equipmentFilter.addEventListener('change', filterExercises);
+        bodyPartFilter.addEventListener('change', filterExercises);
         
         // Mobile menu toggle
         document.querySelector('.menu-toggle').addEventListener('click', function() {
@@ -1276,7 +1298,6 @@
 
     // Get difficulty level based on exercise properties
     function getDifficultyLevel(exercise) {
-        // Simple logic to determine difficulty - you can customize this
         if (exercise.equipment === 'body weight' || exercise.equipment === 'dumbbell') {
             return 'Principiante';
         } else if (exercise.equipment === 'barbell' || exercise.equipment === 'cable') {
@@ -1293,49 +1314,82 @@
     }
 
     // Add exercise to routine
-    function addToRoutine(exerciseId) {
+    async function addToRoutine(exerciseId) {
         if (!routine.includes(exerciseId)) {
-            routine.push(exerciseId);
-            saveRoutineToStorage();
-            renderRoutine();
-            
-            // Show notification
-            showNotification('Ejercicio añadido a tu rutina');
+            try {
+                // Guardar en Supabase
+                await fitgenius.routines.addExercise(currentRoutineId, {
+                    exercise_id: exerciseId,
+                    sets: 3,
+                    reps: 10,
+                    order: routine.length
+                });
+                
+                routine.push(exerciseId);
+                renderRoutine();
+                renderExercises(currentExercises); // Para actualizar el estado del botón
+                
+                showNotification('Ejercicio añadido a tu rutina');
+            } catch (error) {
+                console.error('Error añadiendo ejercicio:', error);
+                showNotification('Error al añadir el ejercicio', 'error');
+            }
         } else {
             showNotification('Este ejercicio ya está en tu rutina', 'error');
         }
     }
 
     // Remove exercise from routine
-    function removeFromRoutine(exerciseId) {
-        routine = routine.filter(id => id !== exerciseId);
-        saveRoutineToStorage();
-        renderRoutine();
-        
-        // Show notification
-        showNotification('Ejercicio eliminado de tu rutina');
-    }
-
-    // Save routine to localStorage
-    function saveRoutineToStorage() {
-        localStorage.setItem('fitgenius_routine', JSON.stringify(routine));
+    async function removeFromRoutine(exerciseId) {
+        try {
+            // Buscar el ejercicio en la rutina de Supabase
+            const routineWithExercises = await fitgenius.routines.getRoutineWithExercises(currentRoutineId);
+            const exerciseToRemove = routineWithExercises.routine_exercises.find(
+                ex => ex.exercise_id === exerciseId
+            );
+            
+            if (exerciseToRemove) {
+                await fitgenius.routines.removeExercise(exerciseToRemove.id);
+            }
+            
+            routine = routine.filter(id => id !== exerciseId);
+            renderRoutine();
+            renderExercises(currentExercises); // Para actualizar el estado del botón
+            
+            showNotification('Ejercicio eliminado de tu rutina');
+        } catch (error) {
+            console.error('Error eliminando ejercicio:', error);
+            showNotification('Error al eliminar el ejercicio', 'error');
+        }
     }
 
     // Save routine
     function saveRoutine() {
-        saveRoutineToStorage();
         showNotification('Rutina guardada correctamente');
     }
 
     // Clear routine
-    function clearRoutine() {
+    async function clearRoutine() {
         if (routine.length === 0) return;
         
         if (confirm('¿Estás seguro de que quieres limpiar tu rutina? Se eliminarán todos los ejercicios.')) {
-            routine = [];
-            saveRoutineToStorage();
-            renderRoutine();
-            showNotification('Rutina limpiada correctamente');
+            try {
+                // Eliminar todos los ejercicios de la rutina en Supabase
+                const routineWithExercises = await fitgenius.routines.getRoutineWithExercises(currentRoutineId);
+                
+                for (const exercise of routineWithExercises.routine_exercises) {
+                    await fitgenius.routines.removeExercise(exercise.id);
+                }
+                
+                routine = [];
+                renderRoutine();
+                renderExercises(currentExercises);
+                
+                showNotification('Rutina limpiada correctamente');
+            } catch (error) {
+                console.error('Error limpiando rutina:', error);
+                showNotification('Error al limpiar la rutina', 'error');
+            }
         }
     }
 
@@ -1444,6 +1498,8 @@
         const category = categoryFilter.value;
         const muscleGroup = muscleGroupFilter.value;
         const difficulty = difficultyFilter.value;
+        const equipment = equipmentFilter.value;
+        const bodyPart = bodyPartFilter.value;
         
         currentExercises = allExercises.filter(exercise => {
             // Search term filter
@@ -1458,12 +1514,22 @@
                 return false;
             }
             
-            // Muscle group filter
+            // Muscle group filter (bodyPart)
             if (muscleGroup && exercise.bodyPart !== muscleGroup) {
                 return false;
             }
             
-            // Difficulty filter (simplified)
+            // Equipment filter
+            if (equipment && exercise.equipment !== equipment) {
+                return false;
+            }
+            
+            // Body part filter
+            if (bodyPart && exercise.bodyPart !== bodyPart) {
+                return false;
+            }
+            
+            // Difficulty filter
             if (difficulty) {
                 const exerciseDifficulty = getDifficultyLevel(exercise).toLowerCase();
                 if (difficulty === 'beginner' && exerciseDifficulty !== 'principiante') {
